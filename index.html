@@ -1,0 +1,1120 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>사건 파일 방탈출 - 6학년 도덕</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Canvas Confetti CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+  <!-- Google Fonts: Gowun Dodum & Noto Sans KR -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Gowun+Dodum&family=Noto+Sans+KR:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <!-- Firebase App & Firestore compat CDN -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Gowun Dodum"', '"Noto Sans KR"', 'sans-serif'],
+          },
+          colors: {
+            folder: {
+              paper: '#FAF6EE',
+              card: '#F4ECE1',
+              border: '#D8C7B0',
+              stamp: '#DC2626',
+              seal: '#B45309'
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      font-family: 'Gowun Dodum', 'Noto Sans KR', sans-serif;
+      background-color: #2D2721;
+      background-image: radial-gradient(#3D352E 1px, transparent 1px);
+      background-size: 20px 20px;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+    .folder-shadow {
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+    }
+    .stamp-effect {
+      display: inline-block;
+      text-transform: uppercase;
+      padding: 0.25rem 1rem;
+      border: 4px solid #DC2626;
+      border-radius: 8px;
+      color: #DC2626;
+      font-weight: 900;
+      transform: rotate(-7deg);
+      mask-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="40"><rect x="0" y="0" width="100" height="40" fill="black"/></svg>');
+    }
+    @keyframes stampDrop {
+      0% { opacity: 0; transform: scale(3) rotate(-20deg); }
+      70% { opacity: 1; transform: scale(0.9) rotate(-7deg); }
+      100% { opacity: 1; transform: scale(1) rotate(-7deg); }
+    }
+    .animate-stamp {
+      animation: stampDrop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+    }
+    /* 메모지 느낌 */
+    .memo-paper {
+      background: #FFFDF0;
+      border-left: 8px solid #F59E0B;
+      box-shadow: 3px 3px 10px rgba(0,0,0,0.15);
+    }
+  </style>
+</head>
+<body class="min-h-screen text-slate-800 flex flex-col justify-between p-2 sm:p-4">
+
+  <!-- ========================================================================= -->
+  <!-- 🧭 최상단 글로벌 헤더: 열쇠 보관함 & 사운드 토글 -->
+  <!-- ========================================================================= -->
+  <header class="w-full max-w-3xl mx-auto bg-amber-950/80 backdrop-blur border border-amber-800/60 rounded-2xl p-3 mb-3 text-white flex items-center justify-between shadow-lg">
+    <!-- 열쇠 보관함 (4칸) -->
+    <div class="flex items-center gap-2">
+      <div class="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-amber-200">
+        <span>🔑 내 열쇠:</span>
+      </div>
+      <div class="flex gap-1.5 sm:gap-2" id="key-slots-container">
+        <!-- JS로 동적 렌더링 (4칸: 책, 임, 존, 중) -->
+      </div>
+    </div>
+
+    <!-- 우측: 사운드 토글 & 홈 버튼 -->
+    <div class="flex items-center gap-2">
+      <button id="btn-sound-toggle" onclick="toggleSound()" class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-900/80 hover:bg-amber-800 text-xs sm:text-sm text-amber-200 transition border border-amber-700/50">
+        <span id="sound-icon">🔇</span>
+        <span id="sound-text" class="hidden sm:inline">소리 끔</span>
+      </button>
+
+      <a id="btn-go-vault" href="?case=vault_9x" class="hidden px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs sm:text-sm shadow-md animate-pulse transition">
+        🔐 금고 가기
+      </a>
+    </div>
+  </header>
+
+  <!-- ========================================================================= -->
+  <!-- 📂 메인 컨테이너 (단일 페이지 라우터 렌더링 영역) -->
+  <!-- ========================================================================= -->
+  <main class="w-full max-w-3xl mx-auto flex-1 flex flex-col justify-center">
+
+    <!-- 0. 사건 파일 목록 / 인트로 허브 (파라미터가 없거나 전체보기일 때) -->
+    <div id="view-hub" class="hidden bg-[#FAF6EE] rounded-3xl border-4 border-[#D8C7B0] p-6 sm:p-8 folder-shadow">
+      <div class="text-center mb-6">
+        <div class="inline-block px-4 py-1 rounded-full bg-amber-800 text-amber-100 text-sm font-bold mb-2">
+          🕵️‍♂️ 6학년 도덕 특별 수사본부
+        </div>
+        <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+          사건 파일 방탈출: 비밀 열쇠를 찾아라!
+        </h1>
+        <p class="text-slate-600 mt-2 text-base sm:text-lg">
+          패들렛에 안내된 사건 파일을 열어 4개의 열쇠 글자를 모두 모으세요!
+        </p>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+        <a href="?case=k7q2" class="p-5 rounded-2xl bg-amber-100/70 border-2 border-amber-400 hover:border-amber-600 hover:shadow-md transition flex flex-col justify-between">
+          <div>
+            <span class="text-xs font-bold text-amber-800 px-2 py-0.5 rounded bg-amber-200">사건 #01</span>
+            <h2 class="text-xl font-bold text-slate-900 mt-2">리치의 장난 영상</h2>
+            <p class="text-sm text-slate-600 mt-1">B봇을 괴롭힘 도구로 쓴 사건</p>
+          </div>
+          <div class="mt-4 flex items-center justify-between text-amber-800 font-bold text-sm">
+            <span>수사 시작하기 ➔</span>
+            <span id="hub-badge-A" class="text-xs px-2 py-1 rounded-full bg-amber-200">미해결</span>
+          </div>
+        </a>
+
+        <a href="?case=m3x9" class="p-5 rounded-2xl bg-emerald-100/70 border-2 border-emerald-400 hover:border-emerald-600 hover:shadow-md transition flex flex-col justify-between">
+          <div>
+            <span class="text-xs font-bold text-emerald-800 px-2 py-0.5 rounded bg-emerald-200">사건 #02</span>
+            <h2 class="text-xl font-bold text-slate-900 mt-2">사바나의 좋아요</h2>
+            <p class="text-sm text-slate-600 mt-1">인기 과시와 사생활 노출 사건</p>
+          </div>
+          <div class="mt-4 flex items-center justify-between text-emerald-800 font-bold text-sm">
+            <span>수사 시작하기 ➔</span>
+            <span id="hub-badge-B" class="text-xs px-2 py-1 rounded-full bg-emerald-200">미해결</span>
+          </div>
+        </a>
+
+        <a href="?case=r8v4" class="p-5 rounded-2xl bg-sky-100/70 border-2 border-sky-400 hover:border-sky-600 hover:shadow-md transition flex flex-col justify-between">
+          <div>
+            <span class="text-xs font-bold text-sky-800 px-2 py-0.5 rounded bg-sky-200">사건 #03</span>
+            <h2 class="text-xl font-bold text-slate-900 mt-2">앤드류의 비밀 계획</h2>
+            <p class="text-sm text-slate-600 mt-1">아이들 정보로 돈벌이를 하려 한 사건</p>
+          </div>
+          <div class="mt-4 flex items-center justify-between text-sky-800 font-bold text-sm">
+            <span>수사 시작하기 ➔</span>
+            <span id="hub-badge-C" class="text-xs px-2 py-1 rounded-full bg-sky-200">미해결</span>
+          </div>
+        </a>
+
+        <a href="?case=w2p5" class="p-5 rounded-2xl bg-indigo-100/70 border-2 border-indigo-400 hover:border-indigo-600 hover:shadow-md transition flex flex-col justify-between">
+          <div>
+            <span class="text-xs font-bold text-indigo-800 px-2 py-0.5 rounded bg-indigo-200">사건 #04</span>
+            <h2 class="text-xl font-bold text-slate-900 mt-2">고장난 론의 소동</h2>
+            <p class="text-sm text-slate-600 mt-1">안전장치 없는 론과 바니의 선택</p>
+          </div>
+          <div class="mt-4 flex items-center justify-between text-indigo-800 font-bold text-sm">
+            <span>수사 시작하기 ➔</span>
+            <span id="hub-badge-D" class="text-xs px-2 py-1 rounded-full bg-indigo-200">미해결</span>
+          </div>
+        </a>
+      </div>
+
+      <div class="border-t-2 border-dashed border-[#D8C7B0] pt-5 text-center">
+        <a href="?case=vault_9x" class="inline-flex items-center gap-2 px-6 py-3 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-lg shadow-lg transition">
+          <span>🔐 최종 비밀 금고 도전하기</span>
+        </a>
+      </div>
+    </div>
+
+    <!-- 1. 사건 파일 표지 화면 (번호 선택 및 수사 시작) -->
+    <div id="view-cover" class="hidden bg-[#FAF6EE] rounded-3xl border-4 border-[#D8C7B0] p-6 sm:p-10 folder-shadow relative overflow-hidden">
+      <!-- 서류철 상단 탭 -->
+      <div class="flex items-center justify-between border-b-2 border-[#D8C7B0] pb-4 mb-6">
+        <div class="flex items-center gap-2">
+          <span id="cover-tag" class="px-3 py-1 rounded-md text-sm font-extrabold tracking-wider uppercase text-white bg-amber-800">
+            사건 파일 #01
+          </span>
+          <span class="text-xs font-bold text-slate-500 uppercase">기밀 수사 문서</span>
+        </div>
+        <div class="text-sm font-bold text-slate-500">
+          초등 도덕 3단원 [활동2]
+        </div>
+      </div>
+
+      <div class="text-center my-6">
+        <h1 id="cover-title" class="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight mb-3">
+          사건 제목
+        </h1>
+        <p id="cover-subtitle" class="text-lg sm:text-xl text-slate-700 font-medium max-w-xl mx-auto">
+          사건 부제목 설명
+        </p>
+      </div>
+
+      <!-- 학생 번호 선택 영역 (개인정보 보호: 이름 받지 않음) -->
+      <div class="bg-[#F4ECE1] rounded-2xl p-5 sm:p-6 border-2 border-[#D8C7B0] my-8 max-w-lg mx-auto">
+        <label for="select-student-num" class="block text-center text-lg sm:text-xl font-bold text-slate-800 mb-3">
+          🎯 내 출석 번호를 선택해 주세요:
+        </label>
+        <div class="flex items-center justify-center gap-3">
+          <select id="select-student-num" class="text-xl sm:text-2xl font-black text-slate-900 bg-white border-2 border-amber-600 rounded-2xl px-5 py-3 shadow-inner focus:outline-none focus:ring-4 focus:ring-amber-400/50">
+            <option value="">번호 선택 (1~21번)</option>
+            <!-- 1번부터 21번까지 동적 생성 -->
+          </select>
+          <span class="text-xl font-bold text-slate-700">번 수사관</span>
+        </div>
+        <p class="text-xs text-center text-slate-500 mt-2">
+          * 개인정보 보호를 위해 이름은 입력받지 않습니다.
+        </p>
+      </div>
+
+      <!-- 수사 시작 버튼 -->
+      <div class="text-center">
+        <button id="btn-start-case" onclick="startCaseQuiz()" class="w-full max-w-md mx-auto py-4 px-8 rounded-2xl bg-amber-700 hover:bg-amber-800 active:scale-95 text-white font-extrabold text-2xl shadow-xl transition flex items-center justify-center gap-3">
+          <span>📂 사건 파일 열기</span>
+          <span>➔</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- 2. 문항 풀이 화면 -->
+    <div id="view-question" class="hidden bg-[#FAF6EE] rounded-3xl border-4 border-[#D8C7B0] p-5 sm:p-8 folder-shadow">
+      <!-- 문제 상단 헤더: 진행도 및 단계 -->
+      <div class="flex items-center justify-between border-b-2 border-[#D8C7B0] pb-3 mb-5">
+        <div class="flex items-center gap-2">
+          <span id="q-step-badge" class="px-2.5 py-1 rounded-lg text-xs sm:text-sm font-extrabold bg-amber-200 text-amber-900">
+            1단계: 사실 확인
+          </span>
+          <span id="q-student-indicator" class="text-xs text-slate-500 font-bold">
+            수사관 #--
+          </span>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <span class="text-sm font-bold text-slate-600">진행도:</span>
+          <span id="q-progress-text" class="text-base sm:text-lg font-black text-amber-800">1 / 5</span>
+        </div>
+      </div>
+
+      <!-- 프로그레스 바 -->
+      <div class="w-full bg-slate-200 h-2.5 rounded-full overflow-hidden mb-6">
+        <div id="q-progress-bar" class="bg-amber-600 h-full transition-all duration-300" style="width: 20%;"></div>
+      </div>
+
+      <!-- 문제 지문 (폰트 20px 이상) -->
+      <div class="mb-6">
+        <h2 id="q-text" class="text-xl sm:text-2xl font-black text-slate-900 leading-snug">
+          문제 지문 내용이 여기에 표시됩니다.
+        </h2>
+      </div>
+
+      <!-- 보기 버튼 목록 (터치 친화적 대형 버튼) -->
+      <div id="q-options-container" class="space-y-3 sm:space-y-3.5 mb-6">
+        <!-- 보기 버튼들이 JS로 동적 생성됨 -->
+      </div>
+
+      <!-- 정답 시 해설 안내 카드 (숨김 상태였다가 정답 시 노출) -->
+      <div id="card-correct-feedback" class="hidden bg-emerald-50 border-2 border-emerald-500 rounded-2xl p-4 sm:p-5 mb-5 animate-fadeIn">
+        <div class="flex items-start gap-3">
+          <div class="text-2xl sm:text-3xl">👏</div>
+          <div class="flex-1">
+            <h3 class="text-lg sm:text-xl font-bold text-emerald-900">정답입니다! 훌륭해요!</h3>
+            <p id="feedback-explanation" class="text-base sm:text-lg text-emerald-800 mt-1 font-medium">
+              해설 문장이 여기에 표시됩니다.
+            </p>
+          </div>
+        </div>
+        <div class="mt-4 text-right">
+          <button id="btn-next-question" onclick="goToNextQuestion()" class="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-lg shadow-md transition">
+            다음 문제로 ➔
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. 오답 힌트 섹션 화면 (수사관 메모지 UI) -->
+    <div id="view-hint" class="hidden bg-[#FAF6EE] rounded-3xl border-4 border-[#D8C7B0] p-6 sm:p-8 folder-shadow">
+      <div class="text-center mb-4">
+        <div class="inline-block px-3 py-1 rounded-full bg-rose-100 border border-rose-300 text-rose-700 text-sm font-bold">
+          🔍 단서가 조금 부족해요!
+        </div>
+        <h2 class="text-2xl sm:text-3xl font-black text-slate-900 mt-2">
+          수사 메모를 확인해 보세요!
+        </h2>
+      </div>
+
+      <!-- 수사 메모지 (포스트잇/클립보드 디자인) -->
+      <div class="memo-paper rounded-2xl p-6 sm:p-8 my-5 max-w-xl mx-auto">
+        <div class="flex items-center gap-2 text-amber-800 font-bold text-sm mb-3">
+          <span>📋 사건 현장 수사관의 생각 메모:</span>
+        </div>
+        <div id="hint-text" class="text-lg sm:text-xl font-bold text-slate-800 leading-relaxed">
+          힌트 내용이 여기에 표시됩니다.
+        </div>
+      </div>
+
+      <div class="text-center mt-6">
+        <button id="btn-retry-question" onclick="retryQuestionWithShuffle()" class="py-3.5 px-8 rounded-2xl bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-extrabold text-xl shadow-lg transition">
+          🔄 보기 섞어서 다시 도전하기!
+        </button>
+        <p class="text-xs text-slate-500 mt-2">
+          * 다시 도전할 때는 보기 순서가 무작위로 바뀝니다.
+        </p>
+      </div>
+    </div>
+
+    <!-- 4. 사건 파일 해결 완료 화면 (서류철 봉인 해제 & 열쇠 획득) -->
+    <div id="view-clear" class="hidden bg-[#FAF6EE] rounded-3xl border-4 border-[#D8C7B0] p-6 sm:p-10 folder-shadow text-center relative overflow-hidden">
+      <div class="inline-block px-4 py-1.5 rounded-full bg-emerald-600 text-white font-black text-sm mb-3">
+        🎉 사건 수사 완료!
+      </div>
+      <h2 class="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">
+        서류철 봉인 해제 성공!
+      </h2>
+      <p class="text-slate-600 mt-2 text-base sm:text-lg">
+        5문제를 모두 해결하여 비밀 열쇠 글자를 획득했습니다!
+      </p>
+
+      <!-- 도장 쾅! 연출 상자 -->
+      <div class="my-8 py-8 px-6 bg-[#F4ECE1] rounded-3xl border-2 border-dashed border-[#D8C7B0] max-w-md mx-auto">
+        <p class="text-sm font-bold text-slate-500 mb-2">획득한 비밀 열쇠 글자</p>
+        <div class="h-28 flex items-center justify-center">
+          <div id="clear-stamp" class="stamp-effect text-6xl sm:text-7xl font-black animate-stamp">
+            <!-- '존' / '중' / '책' / '임' -->
+          </div>
+        </div>
+        <p id="clear-key-desc" class="text-base font-bold text-slate-700 mt-3">
+          가치: 존중 (다른 사람을 대하는 태도)
+        </p>
+      </div>
+
+      <!-- 안내 및 이동 버튼 -->
+      <div class="space-y-3 max-w-md mx-auto">
+        <button onclick="backToPadletNotice()" class="w-full py-4 px-6 rounded-2xl bg-amber-800 hover:bg-amber-900 active:scale-95 text-white font-extrabold text-xl shadow-xl transition">
+          📌 패들렛으로 돌아가 다른 사건 파일 열기
+        </button>
+        <a id="btn-vault-from-clear" href="?case=vault_9x" class="hidden block w-full py-3 px-6 rounded-2xl bg-amber-500 hover:bg-amber-400 active:scale-95 text-slate-950 font-black text-lg shadow-md transition">
+          🔐 4글자를 모두 모았어요! 최종 금고 열기 ➔
+        </a>
+      </div>
+    </div>
+
+    <!-- 5. 최종 기밀 금고 화면 (Vault) -->
+    <div id="view-vault" class="hidden bg-[#FAF6EE] rounded-3xl border-4 border-[#D8C7B0] p-6 sm:p-10 folder-shadow">
+      
+      <!-- 아직 4글자를 다 못 모았을 때 -->
+      <div id="vault-locked-notice" class="hidden text-center py-8">
+        <div class="text-5xl mb-3">🔒</div>
+        <h2 class="text-2xl sm:text-3xl font-black text-slate-900">
+          아직 비밀 열쇠가 부족합니다!
+        </h2>
+        <p class="text-slate-600 mt-2 text-base sm:text-lg">
+          금고를 열려면 4개의 사건 파일을 모두 해결하고 열쇠를 모아야 합니다.
+        </p>
+        <div class="my-6 p-4 bg-[#F4ECE1] rounded-2xl inline-block border border-[#D8C7B0]">
+          <span class="text-slate-700 font-bold">현재 모은 열쇠: </span>
+          <span id="vault-current-keys" class="text-xl font-black text-amber-800">0 / 4개</span>
+        </div>
+        <div>
+          <a href="index.html" class="inline-block py-3 px-6 rounded-2xl bg-amber-800 hover:bg-amber-900 text-white font-bold text-lg shadow transition">
+            사건 파일 목록으로 돌아가기
+          </a>
+        </div>
+      </div>
+
+      <!-- 4글자를 다 모았을 때 금고 해제 퍼즐 화면 -->
+      <div id="vault-puzzle" class="hidden">
+        <div class="text-center mb-6">
+          <div class="inline-block px-4 py-1 rounded-full bg-amber-800 text-amber-100 text-sm font-bold mb-2">
+            🔐 최종 기밀 금고 잠금장치
+          </div>
+          <h2 class="text-2xl sm:text-3xl font-black text-slate-900">
+            두 개의 핵심 가치를 완성하세요!
+          </h2>
+          <p class="text-slate-600 mt-1 text-sm sm:text-base">
+            아래 열쇠 글자 타일을 탭하여 두 낱말을 맞춰 보세요. (순서는 상관없습니다)
+          </p>
+        </div>
+
+        <!-- 슬롯 영역 (두 낱말 2칸씩) -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl mx-auto my-6">
+          <!-- 낱말 1 -->
+          <div class="bg-[#F4ECE1] p-4 rounded-2xl border-2 border-[#D8C7B0] text-center">
+            <span class="text-xs font-bold text-slate-500 block mb-2">첫 번째 낱말</span>
+            <div class="flex justify-center gap-3">
+              <div id="slot-0" onclick="removeTileFromSlot(0)" class="w-16 h-20 sm:w-20 sm:h-24 rounded-2xl bg-white border-2 border-dashed border-amber-600 flex items-center justify-center text-3xl sm:text-4xl font-black text-slate-800 cursor-pointer shadow-inner">
+                ?
+              </div>
+              <div id="slot-1" onclick="removeTileFromSlot(1)" class="w-16 h-20 sm:w-20 sm:h-24 rounded-2xl bg-white border-2 border-dashed border-amber-600 flex items-center justify-center text-3xl sm:text-4xl font-black text-slate-800 cursor-pointer shadow-inner">
+                ?
+              </div>
+            </div>
+          </div>
+
+          <!-- 낱말 2 -->
+          <div class="bg-[#F4ECE1] p-4 rounded-2xl border-2 border-[#D8C7B0] text-center">
+            <span class="text-xs font-bold text-slate-500 block mb-2">두 번째 낱말</span>
+            <div class="flex justify-center gap-3">
+              <div id="slot-2" onclick="removeTileFromSlot(2)" class="w-16 h-20 sm:w-20 sm:h-24 rounded-2xl bg-white border-2 border-dashed border-amber-600 flex items-center justify-center text-3xl sm:text-4xl font-black text-slate-800 cursor-pointer shadow-inner">
+                ?
+              </div>
+              <div id="slot-3" onclick="removeTileFromSlot(3)" class="w-16 h-20 sm:w-20 sm:h-24 rounded-2xl bg-white border-2 border-dashed border-amber-600 flex items-center justify-center text-3xl sm:text-4xl font-black text-slate-800 cursor-pointer shadow-inner">
+                ?
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 글자 타일 보관함 -->
+        <div class="text-center my-6">
+          <span class="text-xs font-bold text-slate-500 block mb-2">배치할 열쇠 타일 (탭하여 올리기)</span>
+          <div id="tile-dock" class="flex justify-center gap-3">
+            <!-- 타일들이 동적으로 생성됨 -->
+          </div>
+        </div>
+
+        <!-- 금고 열기 확인 버튼 -->
+        <div class="text-center mt-6">
+          <button id="btn-check-vault" onclick="checkVaultPassword()" class="py-3.5 px-8 rounded-2xl bg-amber-700 hover:bg-amber-800 active:scale-95 text-white font-extrabold text-xl shadow-lg transition">
+            🔓 금고 암호 확인하기
+          </button>
+        </div>
+      </div>
+
+      <!-- 금고 정답 오픈 성공 연출 -->
+      <div id="vault-success" class="hidden text-center py-6 animate-fadeIn">
+        <div class="text-6xl mb-3">🏆</div>
+        <div class="inline-block px-4 py-1.5 rounded-full bg-emerald-600 text-white font-black text-sm mb-3">
+          금고 잠금 해제 성공!
+        </div>
+        <h2 class="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">
+          존중(Respect)과 책임(Responsibility)
+        </h2>
+
+        <div class="my-6 p-6 bg-amber-100/80 rounded-2xl border-2 border-amber-400 text-left max-w-xl mx-auto shadow-md">
+          <p class="text-xl sm:text-2xl font-bold text-amber-950 mb-3">
+            "이것이 우리가 AI 로봇과 관계를 맺을 때 가장 중요한 두 가지 열쇠예요!"
+          </p>
+          <div class="border-t border-amber-300 pt-3">
+            <p class="text-lg font-black text-rose-800">
+              ❓ [전체 이야기 나누기 질문]
+            </p>
+            <p class="text-base sm:text-lg font-bold text-slate-800 mt-1">
+              "여러분, 각 글자(책, 임, 존, 중)는 각각 어떤 사건 파일에서 얻었나요?"
+            </p>
+          </div>
+        </div>
+
+        <div class="text-center mt-6">
+          <p class="text-slate-600 font-bold mb-3">
+            선생님의 안내에 따라 [활동3: 약속 만들기(패들렛)]로 이동하세요!
+          </p>
+          <button onclick="showFinalConclusion()" class="px-7 py-3 rounded-2xl bg-amber-800 hover:bg-amber-900 active:scale-95 text-white font-extrabold text-lg shadow-lg transition flex items-center justify-center gap-2 mx-auto">
+            <span>✨ 화면 닫고 최종 한 줄 확인하기</span>
+            <span>➔</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 최종 마무리 한 줄 화면 (화면 닫기 버튼 클릭 시 전환) -->
+      <div id="vault-finale" class="hidden text-center py-6 animate-fadeIn">
+        <div class="inline-block px-4 py-1.5 rounded-full bg-amber-700 text-amber-100 font-black text-sm mb-3">
+          ✨ 오늘 수사의 최종 결론
+        </div>
+        <h2 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mb-4">
+          사건 파일 수사 완료 보고서
+        </h2>
+
+        <!-- 핵심 마무리 한 줄 카드 (존중과 책임) -->
+        <div class="my-6 p-6 sm:p-8 bg-gradient-to-br from-amber-50 to-orange-100 rounded-3xl border-4 border-amber-600/80 text-left max-w-xl mx-auto shadow-xl relative overflow-hidden">
+          <div class="absolute -right-4 -bottom-4 text-8xl opacity-10 select-none">🤝</div>
+          <span class="text-xs font-black text-amber-800 uppercase tracking-widest block mb-2">📌 6학년 도덕 핵심 정리</span>
+          <p class="text-xl sm:text-2xl font-black text-slate-900 leading-snug">
+            "인간과 인공지능 로봇의 관계는 사람을 대하는 <span class="text-rose-600 underline decoration-wavy decoration-2">'존중'</span>과 올바른 사용에 대한 <span class="text-indigo-600 underline decoration-wavy decoration-2">'책임'</span>을 바탕으로 할 때, 비로소 바람직하고 따뜻한 동반자가 될 수 있습니다."
+          </p>
+          <div class="mt-4 pt-4 border-t-2 border-dashed border-amber-300">
+            <p class="text-sm sm:text-base font-bold text-slate-700">
+              💡 로봇의 감정이 아니라, 로봇을 만들고 사용하는 <b>우리 사람의 태도와 선택</b>이 가장 중요해요!
+            </p>
+          </div>
+        </div>
+
+        <div class="bg-[#F4ECE1] rounded-2xl p-5 max-w-xl mx-auto border-2 border-[#D8C7B0] text-center my-6">
+          <p class="text-base sm:text-lg font-black text-amber-950 mb-1">
+            👉 이제 패들렛으로 이동해 주세요!
+          </p>
+          <p class="text-sm text-slate-600 font-medium">
+            패들렛에서 <b>[활동3: 우리들의 존중·책임 약속 만들기]</b>에 나의 다짐을 적어 봅시다.
+          </p>
+        </div>
+
+        <div class="flex flex-wrap items-center justify-center gap-3 mt-4">
+          <button onclick="attemptWindowClose()" class="px-6 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-sm transition">
+            창 닫기 (탭 닫기)
+          </button>
+          <a href="index.html" class="px-6 py-2.5 rounded-xl bg-amber-200 hover:bg-amber-300 text-amber-950 font-bold text-sm transition">
+            사건 파일 목록 보기
+          </a>
+        </div>
+        <p id="close-guide-msg" class="text-xs text-slate-500 mt-3 hidden">
+          * 브라우저 상단의 탭 [✕] 버튼을 눌러 이 창을 닫아주세요.
+        </p>
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- ========================================================================= -->
+  <!-- 🦶 하단 안내 푸터 -->
+  <!-- ========================================================================= -->
+  <footer class="w-full max-w-3xl mx-auto text-center py-3 text-xs text-amber-200/60 font-medium">
+    6학년 도덕 3단원 3/4차시 [활동2: 사건 파일 방탈출] | 인간과 AI 로봇의 바람직한 관계
+  </footer>
+
+  <!-- 로직 스크립트 연결 -->
+  <script src="questions.js"></script>
+  <script src="sound.js"></script>
+  <script src="firebase-config.js"></script>
+
+  <script>
+    /**
+     * ============================================================================
+     * 🎮 클라이언트 메인 애플리케이션 상태 및 라우터 제어
+     * ============================================================================
+     */
+    const appState = {
+      currentCaseCode: null,
+      currentCase: null,
+      studentNum: null,
+      currentQuestionIndex: 0,
+      currentShuffledOptions: [],
+      collectedKeys: {}, // { 'k7q2': '존', 'm3x9': '중', ... }
+      soundEnabled: false,
+      vaultSlots: [null, null, null, null],
+      vaultAvailableTiles: ['책', '임', '존', '중']
+    };
+
+    // 1. 초기 로드
+    window.addEventListener("DOMContentLoaded", () => {
+      loadSavedState();
+      renderKeySlots();
+      initStudentSelect();
+      routeByUrl();
+    });
+
+    // 2. 저장된 로컬 상태 불러오기
+    function loadSavedState() {
+      // 저장된 번호
+      const savedNum = localStorage.getItem("quiz_student_num");
+      if (savedNum) {
+        appState.studentNum = parseInt(savedNum, 10);
+        if (window.fbService) {
+          window.fbService.setStudentNumber(appState.studentNum);
+        }
+      }
+
+      // 모은 열쇠들
+      const savedKeys = localStorage.getItem("quiz_unlocked_keys");
+      if (savedKeys) {
+        try {
+          appState.collectedKeys = JSON.parse(savedKeys) || {};
+        } catch (e) {
+          appState.collectedKeys = {};
+        }
+      }
+
+      // 소리 상태
+      const savedSound = localStorage.getItem("quiz_sound_enabled");
+      if (savedSound === "true") {
+        appState.soundEnabled = true;
+        window.quizSound.setSound(true);
+        updateSoundUI(true);
+      }
+    }
+
+    // 학생 번호 셀렉트박스 옵션 채우기 (1~21)
+    function initStudentSelect() {
+      const select = document.getElementById("select-student-num");
+      if (!select) return;
+      select.innerHTML = '<option value="">번호 선택 (1~21번)</option>';
+      for (let i = 1; i <= 21; i++) {
+        const opt = document.createElement("option");
+        opt.value = i;
+        opt.textContent = `${i}번`;
+        if (appState.studentNum === i) {
+          opt.selected = true;
+        }
+        select.appendChild(opt);
+      }
+
+      select.addEventListener("change", (e) => {
+        const val = parseInt(e.target.value, 10);
+        if (val >= 1 && val <= 21) {
+          appState.studentNum = val;
+          localStorage.setItem("quiz_student_num", val);
+          if (window.fbService) {
+            window.fbService.setStudentNumber(val);
+          }
+        }
+      });
+    }
+
+    // 상단 4칸 열쇠함 UI 렌더링
+    function renderKeySlots() {
+      const container = document.getElementById("key-slots-container");
+      if (!container) return;
+      container.innerHTML = "";
+
+      const expectedCases = [
+        { code: "k7q2", letter: "존" },
+        { code: "m3x9", letter: "중" },
+        { code: "r8v4", letter: "책" },
+        { code: "w2p5", letter: "임" }
+      ];
+
+      let count = 0;
+      expectedCases.forEach(item => {
+        const isCollected = !!appState.collectedKeys[item.code];
+        if (isCollected) count++;
+
+        const slot = document.createElement("div");
+        slot.className = `w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center font-black text-sm sm:text-base border transition ${
+          isCollected 
+            ? "bg-amber-400 border-amber-300 text-slate-950 shadow-sm" 
+            : "bg-amber-950/90 border-amber-800 text-amber-700/60"
+        }`;
+        slot.textContent = isCollected ? item.letter : "?";
+        container.appendChild(slot);
+      });
+
+      // 4글자 다 모았으면 상단 '금고 가기' 버튼 노출
+      const btnVault = document.getElementById("btn-go-vault");
+      if (btnVault) {
+        if (count >= 4) {
+          btnVault.classList.remove("hidden");
+        } else {
+          btnVault.classList.add("hidden");
+        }
+      }
+
+      // 허브 화면 뱃지 갱신
+      updateHubBadges();
+    }
+
+    function updateHubBadges() {
+      const map = { "A": "k7q2", "B": "m3x9", "C": "r8v4", "D": "w2p5" };
+      Object.keys(map).forEach(key => {
+        const badge = document.getElementById(`hub-badge-${key}`);
+        if (badge) {
+          if (appState.collectedKeys[map[key]]) {
+            badge.textContent = "해결 완료 ✓";
+            badge.className = "text-xs px-2 py-1 rounded-full bg-emerald-200 text-emerald-900 font-bold";
+          } else {
+            badge.textContent = "미해결";
+            badge.className = "text-xs px-2 py-1 rounded-full bg-amber-200 text-amber-900";
+          }
+        }
+      });
+    }
+
+    // 소리 토글 제어
+    function toggleSound() {
+      const isEnabled = window.quizSound.toggleSound();
+      appState.soundEnabled = isEnabled;
+      localStorage.setItem("quiz_sound_enabled", isEnabled ? "true" : "false");
+      updateSoundUI(isEnabled);
+    }
+
+    function updateSoundUI(isEnabled) {
+      const icon = document.getElementById("sound-icon");
+      const text = document.getElementById("sound-text");
+      if (icon) icon.textContent = isEnabled ? "🔊" : "🔇";
+      if (text) text.textContent = isEnabled ? "소리 켬" : "소리 끔";
+    }
+
+    // 3. URL 파라미터 및 패스 경로 기반 라우팅
+    function routeByUrl() {
+      const params = new URLSearchParams(window.location.search);
+      let caseCode = params.get("case");
+
+      // 패스 경로가 /f/코드 형태인 경우 지원 (/f/k7q2 등)
+      const pathname = window.location.pathname;
+      const pathMatch = pathname.match(/\/f\/([a-zA-Z0-9_]+)/);
+      if (!caseCode && pathMatch && pathMatch[1]) {
+        caseCode = pathMatch[1];
+      }
+
+      hideAllViews();
+
+      if (!caseCode) {
+        // 전체 허브 뷰 노출
+        document.getElementById("view-hub").classList.remove("hidden");
+        return;
+      }
+
+      if (caseCode === "vault_9x") {
+        // 최종 금고 뷰
+        openVaultView();
+        return;
+      }
+
+      // 특정 사건 파일 로드
+      const caseData = window.getCaseData(caseCode);
+      if (caseData) {
+        appState.currentCaseCode = caseCode;
+        appState.currentCase = caseData;
+        openCoverView(caseData);
+      } else {
+        // 잘못된 코드면 허브로
+        document.getElementById("view-hub").classList.remove("hidden");
+      }
+    }
+
+    function hideAllViews() {
+      ["view-hub", "view-cover", "view-question", "view-hint", "view-clear", "view-vault"].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.add("hidden");
+      });
+    }
+
+    // 4. 사건 파일 표지 화면 열기
+    function openCoverView(caseData) {
+      hideAllViews();
+      const view = document.getElementById("view-cover");
+      view.classList.remove("hidden");
+
+      document.getElementById("cover-tag").textContent = caseData.caseNumber;
+      document.getElementById("cover-title").textContent = caseData.caseTitle;
+      document.getElementById("cover-subtitle").textContent = caseData.caseSubtitle;
+
+      // 이미 저장된 번호가 있으면 자동 선택 반영
+      const select = document.getElementById("select-student-num");
+      if (select && appState.studentNum) {
+        select.value = appState.studentNum;
+      }
+    }
+
+    // 5. 사건 파일 수사(퀴즈) 시작
+    function startCaseQuiz() {
+      const select = document.getElementById("select-student-num");
+      const numVal = parseInt(select.value, 10);
+
+      if (!numVal || numVal < 1 || numVal > 21) {
+        alert("수사를 시작하기 전에 내 번호(1~21번)를 먼저 선택해 주세요!");
+        select.focus();
+        return;
+      }
+
+      appState.studentNum = numVal;
+      localStorage.setItem("quiz_student_num", numVal);
+      if (window.fbService) {
+        window.fbService.setStudentNumber(numVal);
+      }
+
+      window.quizSound.playTap();
+      appState.currentQuestionIndex = 0;
+      renderCurrentQuestion();
+    }
+
+    // 6. 문제 렌더링
+    function renderCurrentQuestion() {
+      hideAllViews();
+      const view = document.getElementById("view-question");
+      view.classList.remove("hidden");
+
+      // 피드백 카드 숨기기
+      document.getElementById("card-correct-feedback").classList.add("hidden");
+
+      const qIndex = appState.currentQuestionIndex;
+      const totalQ = appState.currentCase.questions.length;
+      const q = appState.currentCase.questions[qIndex];
+
+      // 헤더 정보
+      document.getElementById("q-step-badge").textContent = q.stepName;
+      document.getElementById("q-student-indicator").textContent = `수사관 #${appState.studentNum}번`;
+      document.getElementById("q-progress-text").textContent = `${qIndex + 1} / ${totalQ}`;
+      document.getElementById("q-progress-bar").style.width = `${((qIndex + 1) / totalQ) * 100}%`;
+
+      // 문제 지문
+      document.getElementById("q-text").textContent = q.question;
+
+      // 보기 생성 (원래 순서로 초기 생성)
+      const optionsContainer = document.getElementById("q-options-container");
+      optionsContainer.innerHTML = "";
+
+      // 보기 객체 배열 생성 (인덱스 보존)
+      const optionObjs = q.options.map((text, idx) => ({ text, originalIndex: idx }));
+      appState.currentShuffledOptions = optionObjs;
+
+      renderOptionButtons(optionObjs);
+    }
+
+    // 보기 버튼들 생성 함수
+    function renderOptionButtons(optionList) {
+      const optionsContainer = document.getElementById("q-options-container");
+      optionsContainer.innerHTML = "";
+
+      optionList.forEach((opt, idx) => {
+        const btn = document.createElement("button");
+        btn.className = "w-full text-left p-4 sm:p-4.5 rounded-2xl bg-white border-2 border-[#D8C7B0] hover:border-amber-600 hover:bg-amber-50 active:scale-[0.99] transition shadow-sm flex items-start gap-3.5 group";
+        
+        const numBadge = document.createElement("span");
+        numBadge.className = "w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-slate-100 group-hover:bg-amber-600 group-hover:text-white text-slate-700 font-black text-sm sm:text-base flex items-center justify-center flex-shrink-0 transition";
+        numBadge.textContent = idx + 1;
+
+        const textSpan = document.createElement("span");
+        textSpan.className = "text-base sm:text-lg font-bold text-slate-800 leading-snug pt-0.5";
+        textSpan.textContent = opt.text;
+
+        btn.appendChild(numBadge);
+        btn.appendChild(textSpan);
+
+        btn.onclick = () => handleOptionClick(opt.originalIndex, btn);
+        optionsContainer.appendChild(btn);
+      });
+    }
+
+    // 7. 보기 클릭 처리 (정답 / 오답 판정)
+    function handleOptionClick(selectedOriginalIndex, btnElement) {
+      const qIndex = appState.currentQuestionIndex;
+      const q = appState.currentCase.questions[qIndex];
+      const isCorrect = window.verifyAnswer(q.answerEnc, selectedOriginalIndex);
+
+      if (isCorrect) {
+        // 정답 처리
+        window.quizSound.playCorrect();
+
+        // 버튼 강조 (초록색)
+        btnElement.classList.remove("bg-white", "hover:bg-amber-50", "border-[#D8C7B0]");
+        btnElement.classList.add("bg-emerald-100", "border-emerald-600", "ring-2", "ring-emerald-400");
+
+        // 모든 보기 클릭 비활성화
+        const allBtns = document.getElementById("q-options-container").querySelectorAll("button");
+        allBtns.forEach(b => b.disabled = true);
+
+        // 해설 피드백 카드 표시
+        const feedbackCard = document.getElementById("card-correct-feedback");
+        document.getElementById("feedback-explanation").textContent = q.explanation;
+        feedbackCard.classList.remove("hidden");
+
+        // 부드럽게 스크롤 내리기
+        feedbackCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+      } else {
+        // 오답 처리
+        window.quizSound.playWrong();
+
+        // 오답 기록 서버 전송 (실시간 대시보드 통계용)
+        if (window.fbService) {
+          window.fbService.recordMistake(q.id);
+        }
+
+        // 힌트 섹션 화면으로 전환
+        openHintView(q.hint);
+      }
+    }
+
+    // 8. 오답 힌트 섹션 화면 노출
+    function openHintView(hintText) {
+      hideAllViews();
+      const view = document.getElementById("view-hint");
+      view.classList.remove("hidden");
+      document.getElementById("hint-text").textContent = hintText;
+    }
+
+    // 9. [다시 도전하기] 클릭 시 보기 순서 섞어서 재제시
+    function retryQuestionWithShuffle() {
+      window.quizSound.playTap();
+      hideAllViews();
+      const view = document.getElementById("view-question");
+      view.classList.remove("hidden");
+
+      // 보기 섞기 (Fisher-Yates shuffle)
+      const shuffled = [...appState.currentShuffledOptions];
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+      appState.currentShuffledOptions = shuffled;
+
+      renderOptionButtons(shuffled);
+    }
+
+    // 10. 다음 문제로 이동
+    function goToNextQuestion() {
+      window.quizSound.playTap();
+      const totalQ = appState.currentCase.questions.length;
+      if (appState.currentQuestionIndex < totalQ - 1) {
+        appState.currentQuestionIndex++;
+        renderCurrentQuestion();
+      } else {
+        // 5문제 모두 클리어!
+        completeCase();
+      }
+    }
+
+    // 11. 사건 파일 해결 (5문제 올클리어)
+    function completeCase() {
+      window.quizSound.playStamp();
+
+      const caseData = appState.currentCase;
+      const keyLetter = window.decodeKeyLetter(caseData.keyLetterEnc);
+
+      // 열쇠 로컬스토리지에 저장
+      appState.collectedKeys[caseData.caseCode] = keyLetter;
+      localStorage.setItem("quiz_unlocked_keys", JSON.stringify(appState.collectedKeys));
+
+      // 상단 열쇠함 갱신
+      renderKeySlots();
+
+      // 서버 전송 (Firestore)
+      if (window.fbService && appState.studentNum) {
+        window.fbService.recordSetClear(appState.studentNum, caseData.caseCode, keyLetter);
+      }
+
+      // 폭죽 효과
+      triggerConfetti();
+
+      // 화면 전환
+      hideAllViews();
+      const view = document.getElementById("view-clear");
+      view.classList.remove("hidden");
+
+      document.getElementById("clear-stamp").textContent = keyLetter;
+      
+      const descMap = {
+        "존": "핵심 가치: 존중 (다른 사람을 대하는 올바른 태도)",
+        "중": "핵심 가치: 존중 (나와 다른 사람의 소중한 사생활 보호)",
+        "책": "핵심 가치: 책임 (기술을 만드는 사람의 윤리적 의무)",
+        "임": "핵심 가치: 책임 (AI 로봇을 사용하는 사람의 주인의식)"
+      };
+      document.getElementById("clear-key-desc").textContent = descMap[keyLetter] || "";
+
+      // 4개 다 모았으면 금고 열기 바로가기 버튼 보이기
+      const keysCount = Object.keys(appState.collectedKeys).length;
+      const btnVault = document.getElementById("btn-vault-from-clear");
+      if (keysCount >= 4) {
+        btnVault.classList.remove("hidden");
+      } else {
+        btnVault.classList.add("hidden");
+      }
+    }
+
+    function backToPadletNotice() {
+      window.quizSound.playTap();
+      // 사건 파일 목록 허브로 이동 (또는 패들렛 안내 모달)
+      window.location.href = "index.html";
+    }
+
+    // 12. 최종 금고 화면 제어
+    function openVaultView() {
+      hideAllViews();
+      const view = document.getElementById("view-vault");
+      view.classList.remove("hidden");
+
+      const collectedCount = Object.keys(appState.collectedKeys).length;
+
+      const lockedNotice = document.getElementById("vault-locked-notice");
+      const puzzleView = document.getElementById("vault-puzzle");
+      const successView = document.getElementById("vault-success");
+      const finaleView = document.getElementById("vault-finale");
+
+      if (successView) successView.classList.add("hidden");
+      if (finaleView) finaleView.classList.add("hidden");
+
+      if (collectedCount < 4) {
+        // 아직 열쇠 부족
+        lockedNotice.classList.remove("hidden");
+        puzzleView.classList.add("hidden");
+        document.getElementById("vault-current-keys").textContent = `${collectedCount} / 4개`;
+      } else {
+        // 4개 글자 보유 -> 퍼즐 오픈
+        lockedNotice.classList.add("hidden");
+        puzzleView.classList.remove("hidden");
+        initVaultPuzzle();
+      }
+    }
+
+    function initVaultPuzzle() {
+      appState.vaultSlots = [null, null, null, null];
+      // 타일 순서 약간 섞어서 제공: 책, 임, 존, 중
+      appState.vaultAvailableTiles = ['책', '임', '존', '중'];
+      renderVaultPuzzleUI();
+    }
+
+    function renderVaultPuzzleUI() {
+      // 4개 슬롯 렌더링
+      for (let i = 0; i < 4; i++) {
+        const slotEl = document.getElementById(`slot-${i}`);
+        const val = appState.vaultSlots[i];
+        slotEl.textContent = val ? val : "?";
+        if (val) {
+          slotEl.className = "w-16 h-20 sm:w-20 sm:h-24 rounded-2xl bg-amber-500 text-slate-950 border-2 border-amber-600 flex items-center justify-center text-3xl sm:text-4xl font-black cursor-pointer shadow-md transform scale-105 transition";
+        } else {
+          slotEl.className = "w-16 h-20 sm:w-20 sm:h-24 rounded-2xl bg-white border-2 border-dashed border-amber-600 flex items-center justify-center text-3xl sm:text-4xl font-black text-slate-300 cursor-pointer shadow-inner transition";
+        }
+      }
+
+      // 사용 가능한 타일 덱 렌더링
+      const dock = document.getElementById("tile-dock");
+      dock.innerHTML = "";
+      appState.vaultAvailableTiles.forEach((tileChar, idx) => {
+        const btn = document.createElement("button");
+        btn.className = "w-14 h-16 sm:w-16 sm:h-20 rounded-2xl bg-amber-100 border-2 border-amber-400 hover:bg-amber-200 active:scale-95 text-2xl sm:text-3xl font-black text-amber-900 shadow transition flex items-center justify-center";
+        btn.textContent = tileChar;
+        btn.onclick = () => placeTileInEmptySlot(tileChar, idx);
+        dock.appendChild(btn);
+      });
+    }
+
+    function placeTileInEmptySlot(tileChar, tileIndex) {
+      window.quizSound.playTap();
+      // 빈 슬롯 찾기
+      const emptyIdx = appState.vaultSlots.findIndex(s => s === null);
+      if (emptyIdx === -1) {
+        alert("모든 슬롯이 찼습니다! 수정하려면 슬롯의 글자를 탭하여 내려놓으세요.");
+        return;
+      }
+
+      appState.vaultSlots[emptyIdx] = tileChar;
+      appState.vaultAvailableTiles.splice(tileIndex, 1);
+      renderVaultPuzzleUI();
+    }
+
+    function removeTileFromSlot(slotIndex) {
+      const tileChar = appState.vaultSlots[slotIndex];
+      if (!tileChar) return;
+
+      window.quizSound.playTap();
+      appState.vaultSlots[slotIndex] = null;
+      appState.vaultAvailableTiles.push(tileChar);
+      renderVaultPuzzleUI();
+    }
+
+    // 금고 비밀번호 검증 (존중 & 책임 / 책임 & 존중 순서 무관 정답 인정)
+    function checkVaultPassword() {
+      const s = appState.vaultSlots;
+      if (s.includes(null)) {
+        alert("4개의 빈칸에 열쇠 글자 타일을 모두 채워 넣어 주세요!");
+        return;
+      }
+
+      const word1 = (s[0] + s[1]);
+      const word2 = (s[2] + s[3]);
+
+      const isPatternA = (word1 === "존중" && word2 === "책임");
+      const isPatternB = (word1 === "책임" && word2 === "존중");
+
+      if (isPatternA || isPatternB) {
+        // 금고 해제 성공!
+        window.quizSound.playVaultOpen();
+        triggerConfetti();
+
+        // 서버 전송
+        if (window.fbService && appState.studentNum) {
+          window.fbService.recordVaultUnlocked(appState.studentNum);
+        }
+
+        document.getElementById("vault-puzzle").classList.add("hidden");
+        document.getElementById("vault-success").classList.remove("hidden");
+      } else {
+        window.quizSound.playWrong();
+        alert("금고가 열리지 않습니다! 우리가 AI 로봇과 맺어야 할 바람직한 관계의 핵심 가치 2가지를 생각하며 다시 배열해 보세요.");
+      }
+    }
+
+    // 13. 금고 성공 후 최종 마무리 한 줄 결론 화면 전환
+    function showFinalConclusion() {
+      window.quizSound.playTap();
+      const successView = document.getElementById("vault-success");
+      const finaleView = document.getElementById("vault-finale");
+
+      if (successView) successView.classList.add("hidden");
+      if (finaleView) {
+        finaleView.classList.remove("hidden");
+        finaleView.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+      triggerConfetti();
+    }
+
+    // 14. 창 닫기 시도 및 미지원 시 가이드 문구 표출
+    function attemptWindowClose() {
+      window.quizSound.playTap();
+      window.close();
+
+      // 브라우저 보안으로 window.close()가 무시될 경우 안내 문구 표시
+      const guideMsg = document.getElementById("close-guide-msg");
+      if (guideMsg) {
+        guideMsg.classList.remove("hidden");
+      }
+    }
+
+    // 폭죽 축하 효과
+    function triggerConfetti() {
+      if (typeof confetti === "function") {
+        confetti({
+          particleCount: 80,
+          spread: 70,
+          origin: { y: 0.6 }
+        });
+      }
+    }
+  </script>
+</body>
+</html>

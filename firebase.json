@@ -1,0 +1,41 @@
+{
+  "hosting": {
+    "public": ".",
+    "ignore": [
+      "firebase.json",
+      "firestore.rules",
+      "README.md",
+      "AGENTS.md",
+      ".*"
+    ],
+    "rewrites": [
+      {
+        "source": "/f/k7q2",
+        "destination": "/index.html"
+      },
+      {
+        "source": "/f/m3x9",
+        "destination": "/index.html"
+      },
+      {
+        "source": "/f/r8v4",
+        "destination": "/index.html"
+      },
+      {
+        "source": "/f/w2p5",
+        "destination": "/index.html"
+      },
+      {
+        "source": "/f/vault_9x",
+        "destination": "/index.html"
+      },
+      {
+        "source": "/teacher",
+        "destination": "/teacher.html"
+      }
+    ]
+  },
+  "firestore": {
+    "rules": "firestore.rules"
+  }
+}

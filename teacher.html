@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>교사용 실시간 수사관제 대시보드 - 6학년 도덕</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js CDN (오답 막대그래프용) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Gowun+Dodum&family=Noto+Sans+KR:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <!-- Firebase App & Firestore compat CDN -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
+  <style>
+    body {
+      font-family: 'Gowun Dodum', 'Noto Sans KR', sans-serif;
+      background-color: #1E1B18;
+      color: #E2E8F0;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #4A4036;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between">
+
+  <!-- ========================================================================= -->
+  <!-- 🔒 1. PIN 번호 인증 레이어 (접속 시 초기 표시) -->
+  <!-- ========================================================================= -->
+  <div id="pin-modal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-4">
+    <div class="bg-[#2D2721] border-2 border-amber-700/60 rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl">
+      <div class="text-4xl mb-3">🛡️</div>
+      <h2 class="text-2xl font-black text-amber-300">교사 대시보드 인증</h2>
+      <p class="text-slate-400 text-sm mt-1 mb-6">수업 관제용 보안 PIN을 입력하세요</p>
+      
+      <div class="mb-5">
+        <input type="password" id="input-pin" maxlength="6" placeholder="PIN 입력" 
+          class="w-full text-center text-3xl tracking-widest font-black py-3 px-4 rounded-2xl bg-black/50 border-2 border-amber-600 text-amber-200 focus:outline-none focus:ring-4 focus:ring-amber-500/40">
+        <p id="pin-error" class="text-xs text-rose-400 font-bold mt-2 hidden">
+          * PIN 번호가 일치하지 않습니다.
+        </p>
+      </div>
+
+      <button onclick="verifyTeacherPin()" class="w-full py-3.5 rounded-2xl bg-amber-600 hover:bg-amber-500 active:scale-95 text-slate-950 font-black text-lg transition shadow-lg">
+        대시보드 입장
+      </button>
+      <p class="text-xs text-slate-500 mt-4">
+        (기본 설정 PIN: <span class="text-amber-400 font-mono">1234</span>)
+      </p>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- 📺 2. 교사 대시보드 메인 화면 -->
+  <!-- ========================================================================= -->
+  <div class="w-full max-w-7xl mx-auto p-3 sm:p-6 flex-1 flex flex-col">
+
+    <!-- 상단 네비게이션 & 컨트롤 바 -->
+    <header class="bg-[#2D2721] border border-amber-800/60 rounded-3xl p-4 sm:p-5 mb-6 flex flex-wrap items-center justify-between gap-4 shadow-xl">
+      <div class="flex items-center gap-3">
+        <div class="w-12 h-12 rounded-2xl bg-amber-600/20 border border-amber-500/40 flex items-center justify-center text-2xl">
+          🕵️‍♂️
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-xl sm:text-2xl font-black text-amber-200">
+              사건 파일 방탈출 수사관제 대시보드
+            </h1>
+            <span id="sync-status-badge" class="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/40">
+              ● 실시간 수신 중
+            </span>
+          </div>
+          <p class="text-xs sm:text-sm text-slate-400">
+            6학년 도덕 3단원 3/4차시 [활동2] | 학생 총 21명
+          </p>
+        </div>
+      </div>
+
+      <!-- 우측 컨트롤 버튼들 -->
+      <div class="flex flex-wrap items-center gap-2 sm:gap-3">
+        <!-- 번호 가리기 토글 (TV 송출용) -->
+        <button id="btn-mask-toggle" onclick="toggleMaskNumbers()" class="px-4 py-2 rounded-xl bg-amber-900/60 hover:bg-amber-800 text-amber-200 text-sm font-bold border border-amber-700/60 transition flex items-center gap-2">
+          <span id="mask-icon">👁️</span>
+          <span id="mask-text">TV용 번호 가리기</span>
+        </button>
+
+        <!-- 활동 초기화 버튼 (리허설용) -->
+        <button onclick="confirmResetAll()" class="px-3.5 py-2 rounded-xl bg-rose-950/80 hover:bg-rose-900 text-rose-300 text-sm font-bold border border-rose-800/60 transition flex items-center gap-1.5">
+          <span>🔄</span>
+          <span>기록 초기화</span>
+        </button>
+
+        <!-- CSV 내려받기 -->
+        <button onclick="exportToCSV()" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-bold border border-slate-700 transition flex items-center gap-1.5">
+          <span>📥</span>
+          <span>CSV 저장</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- 메인 그리드 레이아웃: 좌측(학생 21명 현황판) / 우측(오답 통계 및 TOP 3) -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1">
+
+      <!-- ===================================================================== -->
+      <!-- [좌측 7컬럼] 학생 21명 실시간 진행 현황판 -->
+      <!-- ===================================================================== -->
+      <section class="lg:col-span-7 bg-[#2D2721] border border-amber-800/60 rounded-3xl p-5 shadow-xl flex flex-col">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-2">
+            <span class="text-lg font-black text-amber-300">👥 학생 21명 해결 현황판</span>
+            <span class="text-xs text-slate-400">(A:존, B:중, C:책, D:임, 🏆:금고)</span>
+          </div>
+          <div class="text-xs font-bold text-amber-400">
+            금고 탈출: <span id="stat-vault-count" class="text-sm font-black text-white">0</span> / 21명
+          </div>
+        </div>
+
+        <!-- 21명 그리드 카드 컨테이너 -->
+        <div id="students-grid" class="grid grid-cols-2 sm:grid-cols-3 gap-2.5 flex-1 custom-scrollbar overflow-y-auto max-h-[640px] pr-1">
+          <!-- JS로 학생 카드 21개 렌더링 -->
+        </div>
+      </section>
+
+      <!-- ===================================================================== -->
+      <!-- [우측 5컬럼] 오답 통계 & TOP 3 TV 대형 피드백 -->
+      <!-- ===================================================================== -->
+      <section class="lg:col-span-5 flex flex-col gap-6">
+
+        <!-- 1. 오답이 많은 문항 TOP 3 랭킹 카드 -->
+        <div class="bg-[#2D2721] border border-amber-800/60 rounded-3xl p-5 shadow-xl">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-2">
+              <span class="text-rose-400 text-lg">⚠️</span>
+              <h2 class="text-base sm:text-lg font-black text-amber-300">
+                집중 피드백 TOP 3 문항
+              </h2>
+            </div>
+            <span class="text-xs text-slate-400">* 클릭 시 TV 전체화면 확대</span>
+          </div>
+
+          <div id="top3-container" class="space-y-2.5">
+            <div class="text-sm text-slate-500 text-center py-4">
+              아직 오답 기록이 집계되지 않았습니다.
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. 문항별 오답 횟수 차트 (Chart.js 막대그래프) -->
+        <div class="bg-[#2D2721] border border-amber-800/60 rounded-3xl p-5 shadow-xl flex-1 flex flex-col">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-base sm:text-lg font-black text-amber-300">
+              📊 문항별 누적 오답 횟수
+            </h2>
+            <span class="text-xs text-slate-400">20개 문항 분포</span>
+          </div>
+          <div class="flex-1 min-h-[220px] relative">
+            <canvas id="mistakesChart"></canvas>
+          </div>
+        </div>
+
+      </section>
+
+    </div>
+
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- 📺 3. 교실 TV 미러링용 대형 피드백 모달 -->
+  <!-- ========================================================================= -->
+  <div id="modal-tv-feedback" class="fixed inset-0 bg-black/95 backdrop-blur-md z-50 hidden flex items-center justify-center p-4 sm:p-8">
+    <div class="bg-[#FAF6EE] text-slate-900 border-4 border-amber-600 rounded-3xl max-w-3xl w-full p-6 sm:p-10 shadow-2xl relative max-h-[92vh] overflow-y-auto">
+      
+      <!-- 닫기 버튼 -->
+      <button onclick="closeTvModal()" class="absolute top-5 right-5 w-10 h-10 rounded-full bg-slate-200 hover:bg-slate-300 text-slate-800 font-black text-xl flex items-center justify-center transition">
+        ✕
+      </button>
+
+      <!-- 상단 배너 -->
+      <div class="flex items-center gap-3 mb-4">
+        <span id="modal-rank-badge" class="px-3.5 py-1 rounded-full bg-rose-600 text-white font-black text-sm">
+          오답 1위 문항
+        </span>
+        <span id="modal-case-title" class="text-sm font-bold text-slate-600">
+          사건 #01 - 리치의 장난 영상
+        </span>
+      </div>
+
+      <!-- 문제 지문 (TV용 초대형 폰트) -->
+      <h2 id="modal-question-text" class="text-2xl sm:text-3xl font-black text-slate-900 mb-6 leading-snug">
+        문제 내용이 여기에 크게 표출됩니다.
+      </h2>
+
+      <!-- 보기 목록 -->
+      <div id="modal-options-list" class="space-y-3 mb-6">
+        <!-- 보기 4개가 큼직하게 렌더링됨 -->
+      </div>
+
+      <!-- 수사 힌트 및 도덕 지도 가이드 (교사용 핵심 팁) -->
+      <div class="bg-amber-100/90 border-2 border-amber-500 rounded-2xl p-5 mb-4">
+        <h3 class="text-lg font-black text-amber-950 flex items-center gap-2 mb-2">
+          <span>💡 수사관 힌트 (사고 전환 포인트)</span>
+        </h3>
+        <p id="modal-hint-text" class="text-base sm:text-lg text-slate-800 font-bold leading-relaxed">
+          힌트 내용
+        </p>
+      </div>
+
+      <div class="bg-emerald-100 border-2 border-emerald-500 rounded-2xl p-5">
+        <h3 class="text-lg font-black text-emerald-950 flex items-center gap-2 mb-1">
+          <span>📢 정답 및 도덕적 배움 해설</span>
+        </h3>
+        <p id="modal-explanation-text" class="text-base sm:text-lg text-emerald-900 font-bold leading-relaxed">
+          해설 문장
+        </p>
+      </div>
+
+      <div class="mt-6 text-center">
+        <button onclick="closeTvModal()" class="px-8 py-3 rounded-2xl bg-amber-800 hover:bg-amber-900 text-white font-black text-lg transition">
+          닫기 (대시보드로 복귀)
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 푸터 -->
+  <footer class="w-full text-center py-3 text-xs text-slate-500">
+    교사용 대시보드 | PIN 보안 모드 활성화됨
+  </footer>
+
+  <!-- 스크립트 연결 -->
+  <script src="questions.js"></script>
+  <script src="firebase-config.js"></script>
+
+  <script>
+    /**
+     * ============================================================================
+     * 🖥️ 교사용 대시보드 로직 및 통계 연동
+     * ============================================================================
+     */
+    // 💡 선생님께서 PIN을 바꾸시려면 아래 "1234" 숫자를 변경해 주세요.
+    const TEACHER_PIN = "1234";
+
+    let isMasked = false; // TV 송출 시 번호 가리기 모드
+    let mistakesChart = null;
+    let currentStudentsData = [];
+    let currentMistakesData = {};
+
+    // 1. PIN 인증
+    function verifyTeacherPin() {
+      const input = document.getElementById("input-pin").value.trim();
+      const errorMsg = document.getElementById("pin-error");
+
+      if (input === TEACHER_PIN) {
+        document.getElementById("pin-modal").classList.add("hidden");
+        initDashboard();
+      } else {
+        errorMsg.classList.remove("hidden");
+        document.getElementById("input-pin").value = "";
+        document.getElementById("input-pin").focus();
+      }
+    }
+
+    // 엔터키 지원
+    document.getElementById("input-pin").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") verifyTeacherPin();
+    });
+
+    // 2. 대시보드 초기화
+    function initDashboard() {
+      initChart();
+      startRealtimeSubscriptions();
+    }
+
+    // 3. 학생 21명 카드 초기 렌더링
+    function renderStudentsGrid(students) {
+      currentStudentsData = students;
+      const grid = document.getElementById("students-grid");
+      grid.innerHTML = "";
+
+      let vaultCount = 0;
+
+      students.forEach(st => {
+        const num = st.studentNum;
+        const cleared = st.clearedSets || [];
+        const isVault = !!st.vaultUnlocked;
+        if (isVault) vaultCount++;
+
+        const card = document.createElement("div");
+        card.className = "bg-[#231F1C] border border-[#3D352E] rounded-2xl p-3 flex flex-col justify-between hover:border-amber-700 transition";
+
+        // 학생 번호 라벨 (마스킹 모드 지원)
+        const nameLabel = isMasked ? `수사관 ${String(num).padStart(2, "0")}` : `${num}번 학생`;
+
+        // 세트별 클리어 상태 체크
+        const hasA = cleared.includes("k7q2");
+        const hasB = cleared.includes("m3x9");
+        const hasC = cleared.includes("r8v4");
+        const hasD = cleared.includes("w2p5");
+
+        card.innerHTML = `
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-sm font-black text-amber-200">${nameLabel}</span>
+            <span class="text-xs">${isVault ? "🏆 <span class='text-amber-400 font-bold'>성공</span>" : "<span class='text-slate-500'>진행 중</span>"}</span>
+          </div>
+          <div class="grid grid-cols-4 gap-1 text-center font-bold text-xs">
+            <div class="py-1 rounded ${hasA ? 'bg-amber-500 text-slate-950 font-black' : 'bg-slate-800 text-slate-600'}">존</div>
+            <div class="py-1 rounded ${hasB ? 'bg-emerald-500 text-slate-950 font-black' : 'bg-slate-800 text-slate-600'}">중</div>
+            <div class="py-1 rounded ${hasC ? 'bg-sky-500 text-slate-950 font-black' : 'bg-slate-800 text-slate-600'}">책</div>
+            <div class="py-1 rounded ${hasD ? 'bg-indigo-500 text-slate-950 font-black' : 'bg-slate-800 text-slate-600'}">임</div>
+          </div>
+        `;
+
+        grid.appendChild(card);
+      });
+
+      document.getElementById("stat-vault-count").textContent = vaultCount;
+    }
+
+    // 4. 번호 가리기 토글 (TV 송출 시 위화감 방지)
+    function toggleMaskNumbers() {
+      isMasked = !isMasked;
+      const icon = document.getElementById("mask-icon");
+      const text = document.getElementById("mask-text");
+      if (isMasked) {
+        icon.textContent = "🙈";
+        text.textContent = "번호 마스킹 중";
+      } else {
+        icon.textContent = "👁️";
+        text.textContent = "TV용 번호 가리기";
+      }
+      renderStudentsGrid(currentStudentsData);
+    }
+
+    // 5. Chart.js 막대그래프 초기화 및 업데이트
+    const allQuestionIds = [
+      "A-1", "A-2", "A-3", "A-4", "A-5",
+      "B-1", "B-2", "B-3", "B-4", "B-5",
+      "C-1", "C-2", "C-3", "C-4", "C-5",
+      "D-1", "D-2", "D-3", "D-4", "D-5"
+    ];
+
+    function initChart() {
+      const ctx = document.getElementById("mistakesChart").getContext("2d");
+      mistakesChart = new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: allQuestionIds,
+          datasets: [{
+            label: "오답 횟수",
+            data: allQuestionIds.map(() => 0),
+            backgroundColor: allQuestionIds.map(id => {
+              if (id.startsWith("A")) return "rgba(245, 158, 11, 0.7)";
+              if (id.startsWith("B")) return "rgba(16, 185, 129, 0.7)";
+              if (id.startsWith("C")) return "rgba(14, 165, 233, 0.7)";
+              return "rgba(99, 102, 241, 0.7)";
+            }),
+            borderRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: { stepSize: 1, color: "#94A3B8" },
+              grid: { color: "rgba(255,255,255,0.06)" }
+            },
+            x: {
+              ticks: { color: "#94A3B8", font: { size: 10 } },
+              grid: { display: false }
+            }
+          },
+          plugins: {
+            legend: { display: false }
+          }
+        }
+      });
+    }
+
+    function updateChartData(mistakesMap) {
+      if (!mistakesChart) return;
+      const counts = allQuestionIds.map(id => mistakesMap[id] || 0);
+      mistakesChart.data.datasets[0].data = counts;
+      mistakesChart.update();
+    }
+
+    // 6. TOP 3 오답 문항 랭킹 렌더링
+    function renderTop3Mistakes(mistakesMap) {
+      currentMistakesData = mistakesMap;
+      const sorted = Object.entries(mistakesMap)
+        .filter(([id, count]) => count > 0)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3);
+
+      const container = document.getElementById("top3-container");
+      container.innerHTML = "";
+
+      if (sorted.length === 0) {
+        container.innerHTML = `
+          <div class="text-sm text-slate-500 text-center py-4">
+            아직 오답이 집계되지 않았습니다 (학생들이 잘 풀고 있어요!)
+          </div>
+        `;
+        return;
+      }
+
+      sorted.forEach(([qid, count], idx) => {
+        const qInfo = findQuestionInfoById(qid);
+        if (!qInfo) return;
+
+        const rankColors = ["bg-rose-500", "bg-amber-500", "bg-yellow-600"];
+        const item = document.createElement("div");
+        item.className = "bg-[#231F1C] border border-[#3D352E] hover:border-amber-500 rounded-2xl p-3 flex items-center justify-between cursor-pointer transition";
+        item.onclick = () => openTvModal(qid, idx + 1, count);
+
+        item.innerHTML = `
+          <div class="flex items-center gap-3">
+            <span class="w-7 h-7 rounded-full ${rankColors[idx]} text-slate-950 font-black text-sm flex items-center justify-center">
+              ${idx + 1}
+            </span>
+            <div>
+              <span class="text-xs font-bold text-slate-400">[${qid}] ${qInfo.stepName}</span>
+              <p class="text-sm font-bold text-amber-100 truncate max-w-[220px] sm:max-w-xs">
+                ${qInfo.question}
+              </p>
+            </div>
+          </div>
+          <div class="text-right flex-shrink-0">
+            <span class="text-rose-400 font-black text-base">${count}회</span>
+            <span class="text-xs text-slate-500 block">오답</span>
+          </div>
+        `;
+
+        container.appendChild(item);
+      });
+    }
+
+    // 문항 ID로 문항 찾기
+    function findQuestionInfoById(qid) {
+      const cases = window.QUIZ_CASES;
+      if (!cases) return null;
+
+      for (let caseKey in cases) {
+        const c = cases[caseKey];
+        const found = c.questions.find(q => q.id === qid);
+        if (found) {
+          return {
+            caseNumber: c.caseNumber,
+            caseTitle: c.caseTitle,
+            ...found
+          };
+        }
+      }
+      return null;
+    }
+
+    // 7. 교실 TV 미러링용 모달 열기
+    function openTvModal(qid, rank, mistakeCount) {
+      const q = findQuestionInfoById(qid);
+      if (!q) return;
+
+      document.getElementById("modal-rank-badge").textContent = `오답 ${rank}위 문항 (${mistakeCount}회)`;
+      document.getElementById("modal-case-title").textContent = `${q.caseNumber}: ${q.caseTitle} (${q.stepName})`;
+      document.getElementById("modal-question-text").textContent = q.question;
+
+      // 보기 목록
+      const optionsContainer = document.getElementById("modal-options-list");
+      optionsContainer.innerHTML = "";
+
+      const answerIdx = parseInt(window.decodeKeyLetter ? _dec(q.answerEnc) : "0", 10);
+
+      q.options.forEach((optText, idx) => {
+        const isAns = idx === answerIdx;
+        const div = document.createElement("div");
+        div.className = `p-4 rounded-2xl border-2 flex items-start gap-3 text-lg font-bold ${
+          isAns ? 'bg-emerald-100 border-emerald-500 text-emerald-950' : 'bg-white border-slate-300 text-slate-700'
+        }`;
+        div.innerHTML = `
+          <span class="w-8 h-8 rounded-full ${isAns ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-700'} font-black text-sm flex items-center justify-center flex-shrink-0">
+            ${idx + 1}
+          </span>
+          <span class="pt-0.5">${optText} ${isAns ? '<span class="text-emerald-700 font-black ml-2">[정답]</span>' : ''}</span>
+        `;
+        optionsContainer.appendChild(div);
+      });
+
+      document.getElementById("modal-hint-text").textContent = q.hint;
+      document.getElementById("modal-explanation-text").textContent = q.explanation;
+
+      document.getElementById("modal-tv-feedback").classList.remove("hidden");
+    }
+
+    function closeTvModal() {
+      document.getElementById("modal-tv-feedback").classList.add("hidden");
+    }
+
+    // 8. 실시간 Firestore 리스너 연동
+    function startRealtimeSubscriptions() {
+      if (window.fbService) {
+        // 학생 현황 구독
+        window.fbService.subscribeStudents((students) => {
+          renderStudentsGrid(students);
+        });
+
+        // 오답 통계 구독
+        window.fbService.subscribeMistakes((mistakes) => {
+          updateChartData(mistakes);
+          renderTop3Mistakes(mistakes);
+        });
+      }
+    }
+
+    // 9. 리허설 기록 전체 초기화
+    async function confirmResetAll() {
+      const ok = confirm("⚠️ 경고: 학생 21명의 모든 진행 상태와 오답 기록을 초기화하시겠습니까?\n(수업 전 리허설 테스트 후 깨끗이 비울 때 사용합니다)");
+      if (!ok) return;
+
+      if (window.fbService) {
+        try {
+          await window.fbService.resetAllData();
+          alert("✅ 모든 학생 기록과 오답 통계가 깨끗하게 초기화되었습니다.");
+        } catch (e) {
+          alert("초기화 중 오류가 발생했습니다: " + e.message);
+        }
+      }
+    }
+
+    // 10. CSV 다운로드 기능
+    function exportToCSV() {
+      if (!currentStudentsData || currentStudentsData.length === 0) {
+        alert("내려받을 데이터가 없습니다.");
+        return;
+      }
+
+      let csv = "\uFEFF"; // 한글 깨짐 방지 BOM
+      csv += "번호,SET_A(존),SET_B(중),SET_C(책),SET_D(임),금고탈출여부\n";
+
+      currentStudentsData.forEach(st => {
+        const cleared = st.clearedSets || [];
+        const a = cleared.includes("k7q2") ? "완료" : "미완료";
+        const b = cleared.includes("m3x9") ? "완료" : "미완료";
+        const c = cleared.includes("r8v4") ? "완료" : "미완료";
+        const d = cleared.includes("w2p5") ? "완료" : "미완료";
+        const v = st.vaultUnlocked ? "성공" : "미완료";
+        csv += `${st.studentNum},${a},${b},${c},${d},${v}\n`;
+      });
+
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `도덕_방탈출_결과_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+  </script>
+</body>
+</html>

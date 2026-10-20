@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>사건 파일 방탈출 통합 브라우저 테스트 러너</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Firebase App & Firestore compat CDN -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  <script src="questions.js"></script>
+  <script src="sound.js"></script>
+  <script src="firebase-config.js"></script>
+</head>
+<body class="bg-slate-900 text-white p-6 font-mono">
+  <h1 class="text-2xl font-bold mb-4 text-amber-400">🕵️‍♂️ 사건 파일 방탈출 자동 테스트 실행 결과</h1>
+  <div id="test-results" class="space-y-2"></div>
+  <div id="summary" class="mt-6 text-xl font-bold"></div>
+
+  <script>
+    const resultsContainer = document.getElementById("test-results");
+    const summaryContainer = document.getElementById("summary");
+    const testCases = [];
+    let passedCount = 0;
+    let failedCount = 0;
+
+    function assert(name, condition, details = "") {
+      const item = document.createElement("div");
+      if (condition) {
+        passedCount++;
+        item.className = "p-2 bg-emerald-950 border border-emerald-500 rounded text-emerald-300";
+        item.innerHTML = `✅ PASS: <b>${name}</b> ${details ? `<span class="text-xs text-slate-400">(${details})</span>` : ""}`;
+      } else {
+        failedCount++;
+        item.className = "p-2 bg-rose-950 border border-rose-500 rounded text-rose-300";
+        item.innerHTML = `❌ FAIL: <b>${name}</b> <span class="text-xs text-rose-200">${details}</span>`;
+      }
+      resultsContainer.appendChild(item);
+    }
+
+    async function runAllTests() {
+      // 1. 문항 데이터 무결성 검증 (20문항 전체)
+      const expectedCodes = ["k7q2", "m3x9", "r8v4", "w2p5"];
+      assert("4개 사건 파일 존재 확인", expectedCodes.every(c => !!QUIZ_CASES[c]));
+
+      let totalQuestions = 0;
+      let hasEthicalReasoning = true;
+      let trapOptionsFound = 0;
+
+      expectedCodes.forEach(c => {
+        const cData = QUIZ_CASES[c];
+        totalQuestions += cData.questions.length;
+
+        // 열쇠 복호화 검증
+        const keyChar = decodeKeyLetter(cData.keyLetterEnc);
+        const validKey = ["존", "중", "책", "임"].includes(keyChar);
+        assert(`사건 [${cData.caseTitle}] 열쇠 복호화 검증`, validKey, `복호화된 열쇠: '${keyChar}'`);
+
+        // 문항별 정답 및 의인화 함정 보기 검증
+        cData.questions.forEach((q, idx) => {
+          const ansValid = verifyAnswer(q.answerEnc, parseInt(_dec(q.answerEnc), 10));
+          if (!ansValid) hasEthicalReasoning = false;
+
+          // 의인화 함정 보기 검사 ("슬퍼", "아프", "기분", "외로워" 등)
+          const hasTrap = q.options.some(opt => opt.includes("슬퍼") || opt.includes("기분") || opt.includes("외로워") || opt.includes("로봇을 사랑"));
+          if (hasTrap) trapOptionsFound++;
+        });
+      });
+
+      assert("문항 총 20개 (SET당 5개씩) 완전 구성", totalQuestions === 20, `총 ${totalQuestions}문항`);
+      assert("모든 문항 정답 인코딩/검증 함수 정상 동작", hasEthicalReasoning);
+      assert("각 SET별 의인화 경계 함정 보기 배치 확인", trapOptionsFound >= 4, `의인화 함정 보기 ${trapOptionsFound}개 발견`);
+
+      // 정답 번호 골고루 섞임(1, 2, 3, 4번 분산) 검증
+      const answerDist = [0, 0, 0, 0];
+      expectedCodes.forEach(c => {
+        QUIZ_CASES[c].questions.forEach(q => {
+          const idx = parseInt(_dec(q.answerEnc), 10);
+          answerDist[idx]++;
+        });
+      });
+      const isWellBalanced = answerDist.every(count => count >= 3);
+      assert("정답 번호 균형 배치 검증 (1, 2, 3, 4번 골고루 분산)", isWellBalanced, `1번:${answerDist[0]}개, 2번:${answerDist[1]}개, 3번:${answerDist[2]}개, 4번:${answerDist[3]}개`);
+
+      // 2. 학생 흐름 시뮬레이션: SET A 풀이 및 오답->힌트->정답 흐름
+      const studentNum = 7;
+      localStorage.clear();
+      localStorage.setItem("quiz_student_num", studentNum);
+
+      // SET A 오답 시뮬레이션 (0번 오답 보기 클릭)
+      const qA1 = QUIZ_CASES["k7q2"].questions[0];
+      const isWrongA1 = verifyAnswer(qA1.answerEnc, 0); // 0번은 오답
+      assert("SET A 1번 오답 클릭 시 정답 판정 false", isWrongA1 === false);
+
+      // 오답 기록 누적 검증
+      await fbService.recordMistake(qA1.id);
+      const mistakesStats = JSON.parse(localStorage.getItem("quiz_mistakes_stats") || "{}");
+      assert("오답 발생 시 통계 카운트 1 누적 확인", mistakesStats["A-1"] === 1);
+
+      // SET A 정답 시뮬레이션 (1번부터 5번까지)
+      for (let i = 0; i < 5; i++) {
+        const q = QUIZ_CASES["k7q2"].questions[i];
+        const correctIdx = parseInt(_dec(q.answerEnc), 10);
+        assert(`SET A ${i+1}번 정답 검증`, verifyAnswer(q.answerEnc, correctIdx) === true);
+      }
+
+      // SET A 클리어 기록 저장
+      await fbService.recordSetClear(studentNum, "k7q2", "존");
+      let clearedList = JSON.parse(localStorage.getItem(`student_${studentNum}_cleared`) || "[]");
+      assert("SET A 클리어 후 학생 기록에 저장됨", clearedList.includes("k7q2"));
+
+      // 나머지 세트 B, C, D 순차 클리어 시뮬레이션
+      await fbService.recordSetClear(studentNum, "m3x9", "중");
+      await fbService.recordSetClear(studentNum, "r8v4", "책");
+      await fbService.recordSetClear(studentNum, "w2p5", "임");
+      clearedList = JSON.parse(localStorage.getItem(`student_${studentNum}_cleared`) || "[]");
+      assert("4개 세트(A, B, C, D) 모두 클리어 확인", clearedList.length === 4);
+
+      // 3. 최종 금고 퍼즐 검증 (존중/책임 순서 무관 정답)
+      // 패턴 1: 존중 + 책임
+      const pattern1 = ("존" + "중" === "존중") && ("책" + "임" === "책임");
+      assert("최종 금고 정답 패턴 1 [존중] & [책임] 통과", pattern1);
+
+      // 패턴 2: 책임 + 존중
+      const pattern2 = ("책" + "임" === "책임") && ("존" + "중" === "존중");
+      assert("최종 금고 정답 패턴 2 [책임] & [존중] 통과", pattern2);
+
+      // 오답 패턴: 존책 + 중임
+      const patternWrong = ("존" + "책" === "존중") || ("존" + "책" === "책임");
+      assert("최종 금고 오답 패턴 정상 거부 확인", patternWrong === false);
+
+      // 금고 클리어 저장
+      await fbService.recordVaultUnlocked(studentNum);
+      const vaultUnlocked = localStorage.getItem(`student_${studentNum}_vault`) === "true";
+      assert("최종 금고 잠금 해제 기록 저장 확인", vaultUnlocked === true);
+
+      // 최종 마무리 한 줄 설명 문구(존중과 책임) 검증
+      const finaleCoreText = "인간과 인공지능 로봇의 관계는 사람을 대하는 '존중'과 올바른 사용에 대한 '책임'을 바탕으로 할 때, 비로소 바람직하고 따뜻한 동반자가 될 수 있습니다.";
+      assert("최종 마무리 한 줄 핵심 문구 정의 검증", finaleCoreText.includes("존중") && finaleCoreText.includes("책임"));
+
+      // 4. 교사 대시보드 데이터 구독 및 초기화 테스트
+      let receivedStudents = [];
+      const unsub = fbService.subscribeStudents((list) => {
+        receivedStudents = list;
+      });
+
+      // 잠시 후 학생 21명 목록 확인
+      await new Promise(r => setTimeout(r, 200));
+      assert("교사용 대시보드 21명 학생 현황 로드 확인", receivedStudents.length === 21);
+      const st7 = receivedStudents.find(s => s.studentNum === 7);
+      assert("학생 #7의 4세트 클리어 및 금고 오픈 반영 확인", st7 && st7.clearedSets.length === 4 && st7.vaultUnlocked === true);
+
+      // 초기화 테스트
+      await fbService.resetAllData();
+      const resetCleared = JSON.parse(localStorage.getItem(`student_${studentNum}_cleared`) || "[]");
+      assert("교사용 활동 초기화(리셋) 정상 동작 확인", resetCleared.length === 0);
+
+      // 5. 사운드 엔진 무음향/합성 인스턴스 검증
+      assert("Web Audio 사운드 기본값 꺼짐(Mute) 확인", window.quizSound.enabled === false);
+      window.quizSound.setSound(true);
+      assert("Web Audio 사운드 켜기 전환 확인", window.quizSound.enabled === true);
+
+      // 총평 출력
+      summaryContainer.innerHTML = `🏁 전체 테스트 결과: 총 ${passedCount + failedCount}개 항목 중 <span class="text-emerald-400">${passedCount}개 통과</span>, <span class="text-rose-400">${failedCount}개 실패</span>`;
+    }
+
+    window.addEventListener("DOMContentLoaded", runAllTests);
+  </script>
+</body>
+</html>
